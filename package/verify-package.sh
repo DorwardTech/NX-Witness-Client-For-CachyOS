@@ -126,29 +126,71 @@ fi
 
 # ------------------------------------------------------------------------------------------------
 log "Shared library resolution"
+#
+# Scans the client binary, every bundled .so, and the Qt plugins - the platform plugin
+# (plugins/platforms/libqxcb.so) is what actually pulls the xcb libraries, so checking only the
+# client binary would miss most of the real requirement.
+#
+# Much more is bundled than deb_dependencies.yaml implies: build_distribution.sh copies ffmpeg,
+# OpenSSL 1.1, ICU, OpenAL, gstreamer, libxkbcommon(-x11), libXss, libxcb-cursor/xinerama/shape,
+# libpng16, libOpenGL and the VA/QSV/CUDA stack into lib/. So the genuine system requirement is
+# small, and this pass derives it empirically rather than trusting the mapping table.
 # ------------------------------------------------------------------------------------------------
 if ! command -v ldd >/dev/null 2>&1; then
     warn "ldd not available - skipping"
 else
-    MISSING="$(LD_LIBRARY_PATH="$LIB_DIR" ldd "$CLIENT_BIN" 2>/dev/null | awk '/not found/ {print $1}' | sort -u)"
-    if [ -z "$MISSING" ]; then
-        ok "every dependency of $CLIENT_BIN_NAME resolves"
+    SCAN_LIST="$(mktemp)"
+    {
+        [ -f "$CLIENT_BIN" ] && echo "$CLIENT_BIN"
+        find "$LIB_DIR" -name '*.so*' -type f 2>/dev/null
+        find "$MODULE_DIR/plugins" -name '*.so' -type f 2>/dev/null
+        find "$MODULE_DIR/libexec" -type f 2>/dev/null
+    } | sort -u > "$SCAN_LIST"
+    ok "scanning $(wc -l < "$SCAN_LIST") ELF objects"
+
+    export LD_LIBRARY_PATH="$LIB_DIR:$LIB_DIR/opengl:$LIB_DIR/stdcpp"
+    MISSING_ALL="$(mktemp)"
+    while read -r obj; do
+        [ -f "$obj" ] || continue
+        # Only real ELF objects; skip scripts and data files.
+        head -c 4 "$obj" 2>/dev/null | grep -q 'ELF' || continue
+        ldd "$obj" 2>/dev/null | awk '/not found/ {print $1}'
+    done < "$SCAN_LIST" | sort -u > "$MISSING_ALL"
+
+    if [ ! -s "$MISSING_ALL" ]; then
+        ok "every dependency of every scanned object resolves against the bundled tree"
     else
-        echo "  Unresolved against the bundled lib dir:"
+        echo "  Sonames not satisfied by the bundled tree (expected: system libraries):"
+        NEEDED_PKGS="$(mktemp)"
         while read -r so; do
             [ -n "$so" ] || continue
-            if [ -n "$(find "$LIB_DIR" -name "$so" -print -quit 2>/dev/null)" ]; then
-                ok "$so -> bundled in lib/"
+            pkg="$(soname_to_arch "$so")"
+            if [ -n "$pkg" ]; then
+                printf '  %-34s -> %s\n' "$so" "$pkg"
+                echo "$pkg" >> "$NEEDED_PKGS"
             else
-                pkg="$(soname_to_arch "$so")"
-                if [ -n "$pkg" ]; then
-                    warn "$so -> expected from pacman package: $pkg"
-                else
-                    bad "$so -> UNEXPLAINED: not bundled and not on the runtime dependency list"
-                fi
+                bad "$so -> UNEXPLAINED: not bundled and not on the runtime dependency list"
             fi
-        done <<< "$MISSING"
+        done < "$MISSING_ALL"
+        echo
+        echo "  Distinct pacman packages implied by the scan:"
+        sort -u "$NEEDED_PKGS" 2>/dev/null | sed 's/^/    /'
+        echo
+        echo "  Cross-check against install-cachyos.sh RUNTIME_DEPS:"
+        for pkg in $(sort -u "$NEEDED_PKGS" 2>/dev/null); do
+            case "$pkg" in
+                glibc|"gcc-libs"*) continue ;;   # always present on any Linux system
+            esac
+            if grep -qE "(^|[[:space:]])$pkg([[:space:]]|$)" "$STAGE/install-cachyos.sh"; then
+                ok "$pkg is on the installer's dependency list"
+            else
+                bad "$pkg is REQUIRED by the binaries but MISSING from install-cachyos.sh"
+            fi
+        done
+        rm -f "$NEEDED_PKGS"
     fi
+    rm -f "$SCAN_LIST" "$MISSING_ALL"
+    unset LD_LIBRARY_PATH
 fi
 
 # ------------------------------------------------------------------------------------------------
