@@ -57,6 +57,7 @@ soname_to_arch() {
         libglib-2.0.so*|libgobject-2.0.so*|libgio-2.0.so*|libgmodule-2.0.so*) echo glib2 ;;
         libdbus-1.so*)          echo dbus ;;
         libexpat.so*)           echo expat ;;
+        libxml2.so.2*)          echo libxml2-legacy ;;   #< soname bump: see install-cachyos.sh
         libxml2.so*)            echo libxml2 ;;
         libxslt.so*)            echo libxslt ;;
         libnspr4.so*|libplc4.so*|libplds4.so*) echo nspr ;;
@@ -188,11 +189,15 @@ else
             [ -n "$so" ] || continue
             pkg="$(soname_to_arch "$so")"
             benign="$(benign_unresolved "$so")"
-            if [ -n "$pkg" ]; then
-                printf '  %-40s -> %s\n' "$so" "$pkg"
-                echo "$pkg" >> "$NEEDED_PKGS"
-            elif [ -n "$benign" ]; then
+            if [ -n "$benign" ]; then
                 warn "$so -> $benign"
+            elif [ -n "$pkg" ]; then
+                # Unresolved is unresolved. Naming a package that would supply it is a hint, not
+                # a pass: the client aborts at startup on a missing soname regardless of whether
+                # some package on the list is installed. libxml2 is exactly this trap - the
+                # package is present but provides libxml2.so.16, not the libxml2.so.2 needed.
+                bad "$so -> MISSING at runtime; install: $pkg"
+                echo "$pkg" >> "$NEEDED_PKGS"
             else
                 bad "$so -> UNEXPLAINED: not bundled and not on the runtime dependency list"
             fi
@@ -200,6 +205,8 @@ else
         echo
         echo "  Distinct pacman packages implied by the scan:"
         sort -u "$NEEDED_PKGS" 2>/dev/null | sed 's/^/    /'
+        echo
+        echo "  These are real startup failures - the client will not launch until they resolve."
         echo
         echo "  Cross-check against install-cachyos.sh RUNTIME_DEPS:"
         for pkg in $(sort -u "$NEEDED_PKGS" 2>/dev/null); do

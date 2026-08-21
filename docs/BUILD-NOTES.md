@@ -329,6 +329,32 @@ pacman -T "${RUNTIME_DEPS[@]}"      # -> only what nothing installed satisfies
 `pacman -S --needed` alone is not enough — it skips already-installed packages but still matches
 on package *name*, so it cannot see that a provider stands in for one.
 
+### Depend on sonames, not package names — the libxml2 trap
+
+`libxml2` is the sharpest example of why "the package is installed" proves nothing. Upstream
+libxml2 bumped its soname: Arch's current `libxml2` (2.15) installs `libxml2.so.16`, while this
+client — built against Ubuntu's libxml2 through the Conan `os_deps_for_desktop_linux/ubuntu_focal`
+package — links `libxml2.so.2`. pacman happily reports `libxml2 ... is up to date` and the client
+still dies before drawing anything:
+
+```
+/opt/networkoptix-metavms/client/6.1.3.43301/bin/metavms_client: error while loading shared
+libraries: libxml2.so.2: cannot open shared object file: No such file or directory
+```
+
+`extra/libxml2-legacy` ships `/usr/lib/libxml2.so.2` next to the current one, so both coexist.
+It is in a standard repository — no AUR needed. `install-cachyos.sh` depends on
+`libxml2-legacy`, not just `libxml2`.
+
+Because of this, `verify-package.sh` treats **any** unresolved soname as a failure. Mapping it to
+a package that would supply it is a hint for fixing it, never a pass: the dynamic loader aborts on
+a missing soname regardless of what package names are installed. An earlier version reported
+`libxml2.so.2 -> libxml2`, cross-checked that `libxml2` was on the dependency list, and passed —
+letting a client that could not start be installed.
+
+Objects affected here were `bin/metavms_client`, `libnx_vms_client_desktop.so` and the three
+`libQt6WebEngine*` libraries.
+
 Two additions that are not in the yaml but matter in practice:
 
 - **`libxkbcommon-x11`** — Qt's `xcb` platform plugin needs `libxkbcommon-x11.so.0`. On Ubuntu it

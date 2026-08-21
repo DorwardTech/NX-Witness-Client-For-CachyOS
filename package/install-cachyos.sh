@@ -86,7 +86,13 @@ RUNTIME_DEPS=(
     libxext libxfixes libxkbcommon libxkbcommon-x11 libxss
     libxcomposite libxi libxkbfile libxrandr libxrender libxtst
     # Misc
-    zlib glib2 dbus expat libxml2 libxslt
+    zlib glib2 dbus expat libxslt
+    # libxml2.so.2, NOT libxml2. Upstream libxml2 bumped its soname, so Arch's current libxml2
+    # (2.15) installs libxml2.so.16 while this client - built against Ubuntu's libxml2 - needs
+    # libxml2.so.2. The package is installed and still the client will not start:
+    #   error while loading shared libraries: libxml2.so.2: cannot open shared object file
+    # extra/libxml2-legacy ships /usr/lib/libxml2.so.2 alongside the current one.
+    libxml2-legacy libxml2
     # Qt WebEngine extras
     nspr nss
     # Required by the BUNDLED libgstgl-1.0.so.0 (gstreamer GL is shipped inside lib/,
