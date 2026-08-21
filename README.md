@@ -126,6 +126,7 @@ leaves no trace of why.
 | Path | Purpose |
 | --- | --- |
 | `install-on-cachyos.sh` | One-shot: build → package → verify → install |
+| `release.sh` | Tags, builds both artifacts, and publishes a GitHub release |
 | `build/build-nx-client.sh` | Reproducible from-source build of the client |
 | `package/make-cachyos-package.sh` | Repackages the built `.deb` into a CachyOS tarball |
 | `package/install-cachyos.sh` | Root installer (ships inside the tarball) |
@@ -155,6 +156,21 @@ the same server.
 publication type is `local`, which is not in the set that suppresses the dialog. Automatic updates
 *cannot* replace this build, so the notifications are cosmetic — but decline them anyway: an
 official package would not run on Arch. Move VMS versions by rebuilding from the matching tag.
+
+## Releases
+
+Releases are versioned to the upstream VMS release, not independently: the tag is `v` plus
+`<release>.<buildNumber>`, so **`v6.1.3.43301`** is nx_open tag `vms/6.1.3/release_43301_all`.
+Knowing the client version tells you exactly which server build it was made to match.
+
+To cut one:
+
+```bash
+./release.sh                 # reads the version from the built .deb
+```
+
+It builds the pacman package and the portable tarball, tags the commit, pushes the tag, and
+publishes the release with both artifacts attached (via `gh`, if installed).
 
 ## Licence
 
