@@ -304,6 +304,31 @@ guards against a bundled copy being unusable, which is why they stay on the list
 The same mechanism is why **`gstreamer`, `gst-plugins-base-libs` and `libpng` must NOT be added**
 to the pacman list — they come from Conan and are bundled, not taken from the distro.
 
+### Never name packages directly on CachyOS
+
+Install what is *unsatisfied*, not what is *named*. CachyOS substitutes providers for some core
+packages — most notably `zlib-ng-compat`, a faster drop-in that declares `provides=zlib` and
+`conflicts=zlib`. Asking for `zlib` by name makes pacman offer to remove `zlib-ng-compat`, or
+abort outright:
+
+```
+:: zlib-1:1.3.2-3.1 and zlib-ng-compat-2.3.3-2 are in conflict. Remove zlib-ng-compat? [y/N]
+error: unresolvable package conflicts detected
+```
+
+Answering yes there would drag out a core package and cascade through the system. It is also
+unnecessary: the client needs the `libz.so.1` soname, which `zlib-ng-compat` already provides.
+
+`install-cachyos.sh` therefore filters the list through `pacman -T`, which resolves `provides`
+and prints only genuinely unsatisfied dependencies:
+
+```bash
+pacman -T "${RUNTIME_DEPS[@]}"      # -> only what nothing installed satisfies
+```
+
+`pacman -S --needed` alone is not enough — it skips already-installed packages but still matches
+on package *name*, so it cannot see that a provider stands in for one.
+
 Two additions that are not in the yaml but matter in practice:
 
 - **`libxkbcommon-x11`** — Qt's `xcb` platform plugin needs `libxkbcommon-x11.so.0`. On Ubuntu it

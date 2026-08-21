@@ -100,7 +100,31 @@ RUNTIME_DEPS=(
 if [ "$SKIP_DEPS" -eq 0 ]; then
     log "Installing runtime dependencies with pacman"
     command -v pacman >/dev/null 2>&1 || die "pacman not found - this installer targets Arch/CachyOS"
-    pacman -S --needed --noconfirm "${RUNTIME_DEPS[@]}"
+
+    # Ask what is genuinely unsatisfied rather than naming packages directly.
+    #
+    # "pacman -S --needed zlib" ignores `provides`, so on CachyOS - which ships zlib-ng-compat as
+    # a faster drop-in that provides zlib and conflicts with it - pacman offers to REMOVE
+    # zlib-ng-compat, or aborts with an unresolvable conflict. Nothing here wants that: the
+    # client needs the libz.so.1 soname, and zlib-ng-compat already supplies it.
+    #
+    # "pacman -T" resolves provisions and prints only the dependencies nothing installed
+    # satisfies, so a provider substituted by the distro is correctly treated as satisfied.
+    to_install=()
+    if pacman -T --help >/dev/null 2>&1; then
+        while IFS= read -r line; do
+            [ -n "$line" ] && to_install+=("$line")
+        done < <(pacman -T "${RUNTIME_DEPS[@]}" 2>/dev/null || true)
+    else
+        to_install=("${RUNTIME_DEPS[@]}")
+    fi
+
+    if [ "${#to_install[@]}" -eq 0 ]; then
+        note "all runtime dependencies are already satisfied"
+    else
+        note "installing: ${to_install[*]}"
+        pacman -S --needed --noconfirm "${to_install[@]}"
+    fi
     # Not a hard dependency, but with no fonts installed at all the UI renders blank.
     if ! fc-list 2>/dev/null | grep -q .; then
         note "No fonts detected - installing ttf-dejavu so the UI has something to render with."
