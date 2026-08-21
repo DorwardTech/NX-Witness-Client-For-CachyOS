@@ -81,7 +81,7 @@ install on other CachyOS machines without rebuilding.
 
 ## Two things that will bite you
 
-**1. `demoMode=1` is mandatory.** An Nx Witness server reports its customization as `default`;
+**1. `demoMode=1` is mandatory.** (Confirmed working against a live Nx Witness 6.1.x server.) An Nx Witness server reports its customization as `default`;
 this build is branded `metavms`. Without `demoMode=1` the client refuses to connect with a
 customization mismatch. The setting is per user, in `~/.config/nx_ini/desktop_client.ini`.
 The installer writes it, and the `nxwitness-client` launcher recreates it for any other user on

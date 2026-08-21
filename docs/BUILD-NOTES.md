@@ -398,13 +398,19 @@ Move VMS versions by rebuilding from the matching release tag, not by accepting 
 
 Everything above is checked against source. Two things honestly cannot be:
 
-**1. Server-side acceptance of a `metavms` peer.** `demoMode=1` provably suppresses the
-*client-side* customization check. Whether the server also rejects a differently branded peer is
-not knowable here — `vms/server/` in this repository contains only `api`, `nx_server_plugin_sdk`,
-`plugins` and `stub_analytics_api_integration`; the mediaserver core is not open-sourced.
+**1. Server-side acceptance of a `metavms` peer — CONFIRMED IN PRACTICE.** This was the one thing
+that could not be settled from source: `vms/server/` here contains only `api`,
+`nx_server_plugin_sdk`, `plugins` and `stub_analytics_api_integration`, so the mediaserver core is
+not open-sourced and its peer validation cannot be read. `demoMode=1` provably suppresses the
+*client-side* customization check, but whether a real Nx Witness server would also accept a
+differently branded peer was inference.
 
-Relevant detail: `demoMode` does **not** blank the client's advertised identity. Only
-`developerMode` does — `vms/client/nx_vms_client_desktop/src/nx/vms/client/desktop/system_context.cpp:76-77`:
+It does. This build, with `demoMode=1` and nothing else, connects to and operates against a live
+Nx Witness 6.1.x server. `developerMode` was not required. The reasoning below held: the server
+does not reject on advertised branding.
+
+Relevant detail, which explains why: `demoMode` does **not** blank the client's advertised
+identity. Only `developerMode` does — `vms/client/nx_vms_client_desktop/src/nx/vms/client/desktop/system_context.cpp:76-77`:
 
 ```cpp
 runtimeData.brand = ini().developerMode ? QString() : nx::branding::brand();
@@ -414,10 +420,10 @@ runtimeData.customization = ini().developerMode ? QString() : nx::branding::cust
 So with `demoMode=1` alone the client still reports `brand=metavms`, `customization=metavms` in its
 `RuntimeData`. Two things suggest that is fine: `RuntimeData::operator==` is hand-written
 specifically to skip brand and customization (`runtime_data.h:69-73`), and `RuntimeData_Fields`
-omits `customization` from serialisation. But it is inference, not proof.
+omits `customization` from serialisation. That reading is now borne out by a working connection.
 
-**If the server rejects the connection despite `demoMode=1`,** add `developerMode=1` to the same
-ini file. It blanks the advertised brand and customization, and additionally sets
+**If a different server ever rejects the connection despite `demoMode=1`,** add `developerMode=1`
+to the same ini file. It blanks the advertised brand and customization, and additionally sets
 `ignoreProtocolVersion`. The cost is that developer UI affordances become visible.
 
 **2. Arch package names.** The Debian → Arch mapping was produced on a Debian container with no
