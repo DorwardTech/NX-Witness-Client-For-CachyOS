@@ -17,35 +17,61 @@ version : 6.1.3.43301
 target  : x86_64
 ```
 
-## Quick start (installing a prebuilt package)
+## Quick start
+
+On the CachyOS machine:
 
 ```bash
-tar --zstd -xf nx-witness-client-6.1.3.43301-cachyos-x86_64.tar.zst
-cd nx-client-cachyos
-sudo ./install-cachyos.sh
+git clone https://github.com/DorwardTech/NX-Witness-Client-For-CachyOS
+cd NX-Witness-Client-For-CachyOS
+./install-on-cachyos.sh
 ```
+
+That builds from source, packages, verifies and installs in one go. Budget **1–6 hours** for
+the build depending on core count (72 minutes on 4 cores in testing) and about **25 GB** of
+free disk.
 
 Then launch **Nx Witness Client (Open Source)** from the application menu, or run
 `nxwitness-client`. Connect to `https://<server-ip>:7001` with your Nx Witness credentials.
 
-## Building it yourself
+### Prerequisite: `dpkg` from the AUR
+
+The upstream build's final packaging step runs `fakeroot dpkg-deb -b`
+(`vms/distribution/deb/client/build_distribution.sh:454`), and `dpkg` is **not in Arch's
+official repositories**. Install it first:
 
 ```bash
-./build/build-nx-client.sh                                  # ~1-6 h depending on cores
-./package/make-cachyos-package.sh ~/nx_open-build/distrib/*.deb
-./package/verify-package.sh ~/nx-client-cachyos
+paru -S dpkg      # or: yay -S dpkg
+```
+
+`build-nx-client.sh` tries to do this for you and prompts if it cannot. If you would rather not
+add it, the client itself still builds — only the `.deb` step fails — and
+`make-cachyos-package.sh` can package straight from the staging tree that step leaves behind in
+`nx_open-build/vms/distribution/deb/client/client_build_distribution_tmp/`.
+
+### Running the steps separately
+
+```bash
+./build/build-nx-client.sh                                     # build
+./package/make-cachyos-package.sh ~/nx_open-build/distrib/*.deb  # package
+./package/verify-package.sh ~/nx-client-cachyos                # check
+sudo ~/nx-client-cachyos/install-cachyos.sh                    # install
 ```
 
 `build-nx-client.sh` is self-contained: it checks disk and network, installs host build tools,
 fetches the pinned release commit, builds a Python 3.12 toolchain venv, and runs the upstream
 build. The C++ compiler and Qt are **downloaded as Conan artifacts** from Network Optix's
-Artifactory — the host distribution's GCC is not used, which is precisely what makes an Arch
-build viable.
+Artifactory — the host distribution's compiler is not used, which is precisely what makes an
+Arch build viable.
+
+`make-cachyos-package.sh` produces a relocatable tarball as well, so you can build once and
+install on other CachyOS machines without rebuilding.
 
 ## Repository layout
 
 | Path | Purpose |
 | --- | --- |
+| `install-on-cachyos.sh` | One-shot: build → package → verify → install |
 | `build/build-nx-client.sh` | Reproducible from-source build of the client |
 | `package/make-cachyos-package.sh` | Repackages the built `.deb` into a CachyOS tarball |
 | `package/install-cachyos.sh` | Root installer (ships inside the tarball) |

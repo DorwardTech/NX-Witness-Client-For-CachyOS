@@ -61,14 +61,44 @@ log "Installing host build dependencies"
 
 if command -v pacman >/dev/null 2>&1; then
     HOST_MODE=arch
+    # NOTE: dpkg is deliberately NOT in this list - it is not in Arch's official repositories.
+    # It is handled separately below, because the upstream distribution step needs dpkg-deb.
     sudo pacman -S --needed --noconfirm \
-        git curl zip unzip chrpath pkgconf fakeroot dpkg python patchelf binutils
+        git curl zip unzip zstd chrpath pkgconf fakeroot python patchelf binutils
+
+    # vms/distribution/deb/client/build_distribution.sh:454 runs:
+    #     fakeroot dpkg-deb -Zxz -z $LEVEL -b "$STAGE" "$DEB"
+    # so the final packaging step genuinely needs dpkg-deb. On Arch it lives in the AUR.
+    if ! command -v dpkg-deb >/dev/null 2>&1; then
+        echo
+        echo "  dpkg-deb was not found, and the build's final packaging step requires it."
+        for helper in paru yay pikaur trizen; do
+            if command -v "$helper" >/dev/null 2>&1; then
+                echo "  Installing dpkg from the AUR with $helper ..."
+                "$helper" -S --needed --noconfirm dpkg && break
+            fi
+        done
+    fi
+    if ! command -v dpkg-deb >/dev/null 2>&1; then
+        echo
+        echo "  Could not install dpkg automatically. Install it from the AUR:"
+        echo "      paru -S dpkg      # or: yay -S dpkg"
+        echo
+        echo "  Alternatively, run the build anyway: the client itself will build fine and the"
+        echo "  distribution step will be the only thing that fails. You can then package"
+        echo "  straight from the staging tree that step leaves behind:"
+        echo "      package/make-cachyos-package.sh \\"
+        echo "          $BUILD/vms/distribution/deb/client/client_build_distribution_tmp/*"
+        echo
+        read -r -p "  Continue without dpkg-deb? [y/N] " reply
+        case "$reply" in [Yy]*) ;; *) die "install dpkg and re-run" ;; esac
+    fi
 elif command -v apt-get >/dev/null 2>&1; then
     HOST_MODE=debian
     export DEBIAN_FRONTEND=noninteractive
     ${SUDO:-sudo} apt-get update
     ${SUDO:-sudo} apt-get install -y \
-        git curl zip unzip chrpath pkg-config fakeroot dpkg-dev binutils patchelf
+        git curl zip unzip zstd chrpath pkg-config fakeroot dpkg-dev binutils patchelf
 else
     die "Neither pacman nor apt-get found; install git curl zip unzip chrpath pkgconf fakeroot dpkg by hand."
 fi

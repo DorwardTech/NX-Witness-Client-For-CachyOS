@@ -19,11 +19,19 @@ log()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 note() { printf '    %s\n' "$*"; }
 die()  { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 
+# Accept either a .deb or the staging tree the distribution step builds. On Arch, dpkg-deb
+# comes from the AUR, so the .deb may never get created even though everything needed is
+# already laid out in
+#   nx_open-build/vms/distribution/deb/client/client_build_distribution_tmp/<name>/
+# which has exactly the same opt/ + usr/ shape as the extracted .deb.
 if [ -z "$DEB" ]; then
     DEB="$(ls -1 "$HOME"/nx_open-build/distrib/*.deb 2>/dev/null | head -1 || true)"
+    if [ -z "$DEB" ]; then
+        DEB="$(ls -1d "$HOME"/nx_open-build/vms/distribution/deb/client/client_build_distribution_tmp/*/ 2>/dev/null | head -1 || true)"
+    fi
 fi
-[ -n "$DEB" ] && [ -f "$DEB" ] || die "no .deb given and none found in \$HOME/nx_open-build/distrib/"
-log "Source package: $DEB"
+[ -n "$DEB" ] && [ -e "$DEB" ] \
+    || die "no .deb or staging tree given, and none found under \$HOME/nx_open-build/"
 
 STAGE="$OUTDIR/nx-client-cachyos"
 PKGROOT="$OUTDIR/.nx-pkgroot"
@@ -32,13 +40,20 @@ rm -rf "$PKGROOT" "$STAGE"
 mkdir -p "$PKGROOT" "$STAGE"
 
 # ------------------------------------------------------------------------------------------------
-# Extract the .deb payload
+# Obtain the payload
 # ------------------------------------------------------------------------------------------------
-log "Extracting payload"
-if command -v dpkg-deb >/dev/null 2>&1; then
+if [ -d "$DEB" ]; then
+    log "Source: staging tree $DEB"
+    [ -d "$DEB/opt" ] || die "$DEB does not look like a staging tree (no opt/ inside)"
+    cp -a "$DEB/." "$PKGROOT/"
+elif command -v dpkg-deb >/dev/null 2>&1; then
+    log "Source package: $DEB"
+    log "Extracting payload"
     dpkg-deb -x "$DEB" "$PKGROOT"
 else
-    # Arch has no dpkg-deb by default; ar + tar handles it. Compression varies by build.
+    log "Source package: $DEB"
+    log "Extracting payload"
+    # ar comes from binutils, which is present on Arch; no dpkg needed for extraction.
     note "dpkg-deb not present, falling back to ar + tar"
     tmp="$(mktemp -d)"
     ( cd "$tmp" && ar x "$DEB" )
