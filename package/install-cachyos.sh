@@ -8,6 +8,7 @@
 # Options:
 #     --no-deps      skip the pacman runtime dependency step
 #     --no-ini       do not write ~/.config/nx_ini/desktop_client.ini
+#     --deps-only    install the runtime dependencies and then stop
 #
 # The script is self-describing: it discovers the company id, version and client binary
 # name from the bundled opt/ tree, so it is not tied to one customization or build number.
@@ -16,10 +17,12 @@ set -euo pipefail
 
 SKIP_DEPS=0
 SKIP_INI=0
+DEPS_ONLY=0
 for arg in "$@"; do
     case "$arg" in
-        --no-deps) SKIP_DEPS=1 ;;
-        --no-ini)  SKIP_INI=1 ;;
+        --no-deps)   SKIP_DEPS=1 ;;
+        --no-ini)    SKIP_INI=1 ;;
+        --deps-only) DEPS_ONLY=1 ;;
         -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
         *) echo "Unknown option: $arg" >&2; exit 2 ;;
     esac
@@ -105,6 +108,13 @@ if [ "$SKIP_DEPS" -eq 0 ]; then
     fi
 else
     log "Skipping dependency installation (--no-deps)"
+fi
+
+# Used by install-on-cachyos.sh: the runtime libraries must be present before verify-package.sh
+# resolves the binaries, otherwise system libraries legitimately report as missing.
+if [ "$DEPS_ONLY" -eq 1 ]; then
+    log "Dependencies installed (--deps-only); stopping here"
+    exit 0
 fi
 
 # ------------------------------------------------------------------------------------------------

@@ -166,11 +166,17 @@ else
 
     export LD_LIBRARY_PATH="$LIB_DIR:$LIB_DIR/opengl:$LIB_DIR/stdcpp"
     MISSING_ALL="$(mktemp)"
+    # Extract the soname sitting immediately before "=> not found", wherever it appears on the
+    # line. Taking $1 is wrong: glibc's ldd prefixes output with "<path>:" in some versions
+    # (newer glibc, as on Arch/CachyOS), which yields the FILE NAME instead of the soname and
+    # makes every object with a missing dependency look like an unexplained library.
+    # Requiring the token to contain ".so" and no "/" keeps paths and headers out.
+    extract_missing='s|.*[[:space:]]\([^[:space:]/]*\.so[^[:space:]]*\)[[:space:]]*=>[[:space:]]*not found.*|\1|p'
     while read -r obj; do
         [ -f "$obj" ] || continue
         # Only real ELF objects; skip scripts and data files.
         head -c 4 "$obj" 2>/dev/null | grep -q 'ELF' || continue
-        ldd "$obj" 2>/dev/null | awk '/not found/ {print $1}'
+        ldd "$obj" 2>/dev/null | sed -n "$extract_missing"
     done < "$SCAN_LIST" | sort -u > "$MISSING_ALL"
 
     if [ ! -s "$MISSING_ALL" ]; then

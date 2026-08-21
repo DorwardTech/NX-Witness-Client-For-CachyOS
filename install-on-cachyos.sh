@@ -29,13 +29,18 @@ log "STEP 2/4  Packaging for CachyOS"
 STAGE="$WORKDIR/nx-client-cachyos"
 [ -d "$STAGE" ] || die "packaging did not produce $STAGE"
 
-log "STEP 3/4  Verifying the package"
+# Dependencies first, THEN verify. verify-package.sh resolves the binaries with ldd, so any
+# runtime library not yet installed shows up as missing and the check is meaningless before
+# pacman has run. Installing files is still gated on verification passing.
+log "STEP 3/4  Installing runtime dependencies, then verifying"
+sudo "$STAGE/install-cachyos.sh" --deps-only
+
 if ! "$HERE/package/verify-package.sh" "$STAGE"; then
     die "verification failed - not installing. Investigate before continuing."
 fi
 
 log "STEP 4/4  Installing (sudo)"
-sudo "$STAGE/install-cachyos.sh"
+sudo "$STAGE/install-cachyos.sh" --no-deps
 
 log "Done"
 cat <<SUMMARY
