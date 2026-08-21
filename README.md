@@ -88,6 +88,28 @@ tar --zstd -xf nx-witness-client-6.1.3.43301-cachyos-x86_64.tar.zst
 cd nx-client-cachyos && sudo ./install-cachyos.sh
 ```
 
+## Building a pacman package
+
+For a proper Arch package managed by pacman, rather than the shell installer:
+
+```bash
+./package/arch/make-arch-package.sh ~/nx_open-build/distrib/*.deb
+sudo pacman -U package/arch/nx-witness-client-opensource-6.1.3.43301-1-x86_64.pkg.tar.zst
+```
+
+`pkgver` tracks the upstream VMS version exactly — `<release>.<buildNumber>`, so `6.1.3.43301`
+is nx_open tag `vms/6.1.3/release_43301_all`. The helper reads it from the `.deb` filename, so
+packaging a different build needs no edit.
+
+This is a `-bin` style PKGBUILD: it repackages the built `.deb` rather than rebuilding inside
+`makepkg`, since a from-source build pulls ~13 GB of Conan artifacts and takes hours. It installs
+the same layout as the shell installer, plus a `.install` hook explaining `demoMode`, and
+`pacman -R` cleans up properly.
+
+One nicety of going through pacman: `depends=('zlib')` is matched against `provides`, so
+CachyOS's `zlib-ng-compat` satisfies it — unlike `pacman -S zlib`, which is what made the shell
+installer offer to remove it.
+
 ## If it does not start
 
 ```bash
@@ -109,6 +131,8 @@ leaves no trace of why.
 | `package/install-cachyos.sh` | Root installer (ships inside the tarball) |
 | `package/uninstall-cachyos.sh` | Uninstaller (ships inside the tarball) |
 | `package/verify-package.sh` | Checks a staged package before it is installed |
+| `package/arch/PKGBUILD` | Builds a pacman package, versioned to the VMS release |
+| `package/arch/make-arch-package.sh` | Runs `makepkg`, with a dependency-drift check |
 | `package/diagnose.sh` | Diagnostics for a client that will not start |
 | `docs/BUILD-NOTES.md` | Findings, pitfalls, and source citations |
 

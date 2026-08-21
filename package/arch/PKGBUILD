@@ -1,0 +1,129 @@
+# Maintainer: Robert Dorward <21103369+DorwardTech@users.noreply.github.com>
+#
+# Nx Witness / Nx Meta VMS Desktop Client, built from the open-source nx_open sources.
+#
+# This is a *-bin style package: it repackages the .deb produced by build/build-nx-client.sh
+# rather than rebuilding from source, because a from-source build pulls ~13 GB of Conan
+# artifacts and takes hours - not something to run inside makepkg.
+#
+# Build it with package/arch/make-arch-package.sh, which places the .deb here and runs makepkg.
+#
+# pkgver tracks the upstream VMS version exactly: <release>.<buildNumber>, e.g. 6.1.3.43301
+# corresponds to nx_open tag vms/6.1.3/release_43301_all.
+
+pkgname=nx-witness-client-opensource
+pkgver=6.1.3.43301
+pkgrel=1
+pkgdesc="Nx Witness / Nx Meta VMS Desktop Client (open-source build of nx_open)"
+arch=('x86_64')
+url="https://github.com/DorwardTech/NX-Witness-Client-For-CachyOS"
+license=('MPL2')
+provides=("nx-witness-client=${pkgver}" "nx-meta-client=${pkgver}")
+conflicts=('nx-witness-client' 'nx-meta-client')
+options=('!strip' '!debug' 'staticlibs' '!emptydirs')
+install="${pkgname}.install"
+
+# Naming a package in depends() is matched against `provides`, unlike `pacman -S <name>`,
+# so 'zlib' here is correctly satisfied by CachyOS's zlib-ng-compat and does NOT conflict.
+#
+# libxml2-legacy supplies libxml2.so.2. The client links that soname, while current libxml2
+# provides libxml2.so.16 - the package being installed is not enough, see docs/BUILD-NOTES.md.
+depends=(
+    # graphics / GL
+    'libglvnd' 'glu' 'mesa'
+    # fonts
+    'fontconfig' 'freetype2'
+    # audio
+    'alsa-lib' 'libpulse'
+    # keyring
+    'libsecret'
+    # X11 / XCB, required by Qt's xcb platform plugin
+    'libx11' 'libxcb' 'xcb-util' 'xcb-util-cursor' 'xcb-util-image' 'xcb-util-keysyms'
+    'xcb-util-renderutil' 'xcb-util-wm' 'libxext' 'libxfixes' 'libxkbcommon'
+    'libxkbcommon-x11' 'libxss' 'libxcomposite' 'libxi' 'libxkbfile' 'libxrandr'
+    'libxrender' 'libxtst'
+    # misc
+    'zlib' 'glib2' 'dbus' 'expat' 'libxslt' 'libxml2-legacy' 'libxml2'
+    # Qt WebEngine
+    'nspr' 'nss'
+    # needed by the bundled libgstgl-1.0.so.0
+    'libgudev'
+    # needed by the bundled Intel VA-API driver (lib/libva-drivers/iHD_drv_video.so)
+    'intel-gmmlib'
+)
+optdepends=(
+    'xorg-xwayland: run under a Wayland session (the client uses the xcb platform plugin)'
+    'ttf-dejavu: fonts, if no font packages are installed'
+)
+
+source=("metavms-client-open-source-${pkgver}-linux_x64-local.deb")
+sha256sums=('SKIP')
+
+_company=networkoptix-metavms
+_prefix="/opt/${_company}/client/${pkgver}"
+
+package() {
+    cd "${srcdir}"
+
+    # bsdtar (libarchive, a pacman dependency) reads .deb directly - no dpkg needed here.
+    mkdir -p deb && bsdtar -xf "metavms-client-open-source-${pkgver}-linux_x64-local.deb" -C deb
+    mkdir -p payload && bsdtar -xf deb/data.tar.* -C payload
+
+    # Client tree and icons, exactly as upstream lays them out.
+    install -d "${pkgdir}/opt"
+    cp -a "payload/opt/${_company}" "${pkgdir}/opt/"
+    if [ -d payload/usr/share/icons ]; then
+        install -d "${pkgdir}/usr/share/icons"
+        cp -a payload/usr/share/icons/. "${pkgdir}/usr/share/icons/"
+    fi
+
+    chmod 755 "${pkgdir}${_prefix}/bin/client" "${pkgdir}${_prefix}/bin/metavms_client"
+    [ -f "${pkgdir}${_prefix}/bin/applauncher" ] && chmod 755 "${pkgdir}${_prefix}/bin/applauncher"
+    [ -f "${pkgdir}${_prefix}/lib/stdcpp/choose_newer_stdcpp.sh" ] \
+        && chmod 755 "${pkgdir}${_prefix}/lib/stdcpp/choose_newer_stdcpp.sh"
+
+    # Launcher. Pins the xcb platform plugin because the bundled Qt wayland plugins have no
+    # matching Qt Wayland libraries, and bootstraps demoMode=1, without which the client
+    # refuses an Nx Witness server on a customization mismatch. See docs/BUILD-NOTES.md.
+    install -d "${pkgdir}/usr/bin"
+    cat > "${pkgdir}/usr/bin/nxwitness-client" <<WRAPPER
+#!/bin/sh
+# Nx VMS Desktop Client ${pkgver} (open-source build).
+: "\${QT_QPA_PLATFORM:=xcb}"
+export QT_QPA_PLATFORM
+
+INI_DIR="\${NX_INI_DIR:-\$HOME/.config/nx_ini}"
+INI="\$INI_DIR/desktop_client.ini"
+if [ -n "\$INI_DIR" ]; then
+    if [ ! -e "\$INI" ]; then
+        mkdir -p "\$INI_DIR" 2>/dev/null && printf 'demoMode=1\n' > "\$INI" 2>/dev/null
+    elif ! grep -q 'demoMode' "\$INI" 2>/dev/null; then
+        printf 'demoMode=1\n' >> "\$INI" 2>/dev/null
+    fi
+fi
+exec "${_prefix}/bin/client" "\$@"
+WRAPPER
+    chmod 755 "${pkgdir}/usr/bin/nxwitness-client"
+
+    install -d "${pkgdir}/usr/share/applications"
+    cat > "${pkgdir}/usr/share/applications/nxwitness-client.desktop" <<DESKTOP
+[Desktop Entry]
+Name=Nx Witness Client (Open Source)
+GenericName=Video Management System Client
+Comment=Connect to an Nx Witness / Nx Meta VMS server
+Exec=/usr/bin/nxwitness-client %u
+Icon=vmsclient-metavms
+Terminal=false
+Type=Application
+StartupNotify=true
+StartupWMClass=metavms
+Categories=AudioVideo;Video;Player;Network;
+DESKTOP
+
+    # URI scheme handler, so nx-vms:// links open the client.
+    _proto="$(grep -rl 'x-scheme-handler/' payload/usr/share/applications 2>/dev/null | head -1)"
+    if [ -n "${_proto}" ]; then
+        sed 's|^Exec=.*|Exec=/usr/bin/nxwitness-client %u|' "${_proto}" \
+            > "${pkgdir}/usr/share/applications/$(basename "${_proto}")"
+    fi
+}
