@@ -90,7 +90,7 @@ if command -v pacman >/dev/null 2>&1; then
         echo "      package/make-cachyos-package.sh \\"
         echo "          $BUILD/vms/distribution/deb/client/client_build_distribution_tmp/*"
         echo
-        read -r -p "  Continue without dpkg-deb? [y/N] " reply
+        read -r -p "  Continue without dpkg-deb? [y/N] " reply || reply=""
         case "$reply" in [Yy]*) ;; *) die "install dpkg and re-run" ;; esac
     fi
 elif command -v apt-get >/dev/null 2>&1; then
