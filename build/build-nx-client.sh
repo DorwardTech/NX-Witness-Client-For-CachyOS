@@ -174,6 +174,56 @@ case "$(python --version 2>&1)" in *" 3.12."*) ;; *) die "venv is not Python 3.1
 #    *clean* rebuild does not re-download them. Skip it when disk is tight - the extracted
 #    cache in "$BUILD/.conan" already makes ordinary re-runs cheap.
 # ------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------
+# Conan build profile
+#
+# Conan is invoked with "--profile:build=default", and auto-generates that profile by detecting
+# the host compiler. nx_open ships its own conan_config/settings.yml whose gcc version list stops
+# at 14.1, so on a rolling distro like CachyOS (GCC 15/16) detection yields a value Conan then
+# rejects:
+#
+#     ERROR: Invalid setting '16' is not a valid 'settings.compiler.version' value.
+#
+# Pin a supported version instead. This is only the BUILD profile - it selects build tooling. The
+# client itself is compiled with the Conan-supplied clang toolchain named by the HOST profile
+# (conan_profiles/linux_x64.profile), so clamping this has no effect on the produced binaries.
+#
+# conan_config/ ships no profiles directory, so "conan config install" will not overwrite this.
+# ------------------------------------------------------------------------------------------------
+log "Pinning the Conan build profile"
+
+CONAN_MAX_GCC=14   #< Highest gcc in nx_open's conan_config/settings.yml for this branch.
+host_gcc="$(gcc -dumpversion 2>/dev/null | cut -d. -f1)"
+profile_gcc="$CONAN_MAX_GCC"
+if [ -n "$host_gcc" ] && [ "$host_gcc" -lt "$CONAN_MAX_GCC" ] 2>/dev/null; then
+    profile_gcc="$host_gcc"
+fi
+echo "host gcc: ${host_gcc:-unknown}  ->  build profile compiler.version=$profile_gcc"
+
+mkdir -p "$BUILD/.conan/profiles"
+cat > "$BUILD/.conan/profiles/default" <<PROFILE
+[settings]
+os=Linux
+os_build=Linux
+arch=x86_64
+arch_build=x86_64
+compiler=gcc
+compiler.version=$profile_gcc
+compiler.libcxx=libstdc++
+build_type=Release
+[options]
+[build_requires]
+[env]
+PROFILE
+
+# A CMakeCache.txt without conan_paths.cmake means a previous generation died partway (Conan is
+# run during generation). The upstream readme is explicit that the cache must be removed before
+# retrying, so do it rather than letting build.sh reuse a half-configured cache.
+if [ -f "$BUILD/CMakeCache.txt" ] && [ ! -f "$BUILD/conan_paths.cmake" ]; then
+    echo "Previous generation did not complete - removing CMakeCache.txt before retrying."
+    rm -f "$BUILD/CMakeCache.txt"
+fi
+
 log "Building (this takes 1-6 hours depending on core count)"
 
 # Cap parallelism on small-RAM machines; the linker is the memory hog.

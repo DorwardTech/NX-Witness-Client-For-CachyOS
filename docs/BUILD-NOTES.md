@@ -409,3 +409,29 @@ return protocolVersionOverride > 0 ? protocolVersionOverride : 6113;
 | Generation fails, odd cache state | `rm -f nx_open-build/CMakeCache.txt`, then re-run. The upstream readme calls this out explicitly. |
 | Linker killed, exit 137 | RAM exhaustion. Resume with `cmake --build nx_open-build -- -j2`; ninja picks up where it stopped. |
 | Transient Conan download failure | Just re-run the same `./build.sh` command. |
+| `ERROR: Invalid setting '16' is not a valid 'settings.compiler.version' value` | Rolling-release distro with a GCC newer than Conan knows. See below. |
+
+### `Invalid setting '<N>' is not a valid 'settings.compiler.version' value`
+
+Conan is invoked with `--profile:build=default` and generates that profile by detecting the host
+compiler. `conan_config/settings.yml` in this branch lists gcc versions only up to `14.1`, so on
+CachyOS or any rolling distro shipping GCC 15/16 the detected value is rejected and generation
+fails with the generic `Conan execution failed.` wrapper from `cmake/utils.cmake:425`.
+
+The real Conan error is printed above that wrapper — `run_conan.cmake` uses `COMMAND_ECHO STDERR`
+and does not capture output, and it retries once with `--update`, so there are two blocks of
+Conan output to scroll back through. To see it on its own:
+
+```bash
+.venv/lib/python3.12/site-packages/cmake/data/bin/cmake \
+    -DinstallSystemRequirements=OFF -P ~/nx_open-build/run_conan.cmake
+```
+
+`build-nx-client.sh` now pins the profile before building. To fix an existing build directory by
+hand, write `$CONAN_USER_HOME/.conan/profiles/default` (where `CONAN_USER_HOME` is the build
+directory) with `compiler.version=14`, then delete `CMakeCache.txt` and re-run.
+
+This only affects the **build** profile, which selects build tooling. The client is compiled with
+the Conan-supplied clang toolchain named by the host profile
+(`conan_profiles/linux_x64.profile`), so clamping the value does not change the binaries.
+`conan_config/` ships no `profiles/` directory, so `conan config install` will not overwrite it.
