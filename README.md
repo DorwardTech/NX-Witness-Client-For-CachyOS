@@ -172,6 +172,18 @@ To cut one:
 It builds the pacman package and the portable tarball, tags the commit, pushes the tag, and
 publishes the release with both artifacts attached (via `gh`, if installed).
 
+The artifacts are ~300 MB each and are **never committed** — they are published as release
+assets. The two GitHub limits are easy to conflate:
+
+| | Limit |
+| --- | --- |
+| File committed into the repository | **100 MB** hard block (50 MB warns) |
+| Release asset | **2 GB** per file |
+
+So the package is comfortably within limits as a release asset, and would be rejected outright as
+a repository file. `makepkg`'s `pkg/` directory alone is ~875 MB, so `package/arch/{pkg,src}/`
+and every artifact extension are gitignored.
+
 ## Licence
 
 The `nx_open` sources are licensed under MPL 2.0 by Network Optix. The scripts in this repository

@@ -32,7 +32,31 @@ TAG="v$VERSION"
 log "Releasing $TAG"
 note "source .deb: $DEB"
 
-[ -z "$(git status --porcelain)" ] || die "working tree is dirty - commit or stash first"
+# Sync pkgver BEFORE the clean-tree check and before tagging. make-arch-package.sh rewrites
+# these two lines, so doing it later would leave the tag pointing at a commit that still
+# carries the previous version - the tag and the package would disagree.
+CUR="$(sed -n 's/^pkgver=//p' package/arch/PKGBUILD)"
+if [ "$CUR" != "$VERSION" ]; then
+    log "Bumping PKGBUILD pkgver: $CUR -> $VERSION"
+    sed -i "s/^pkgver=.*/pkgver=$VERSION/" package/arch/PKGBUILD
+    sed -i "s|^source=(.*|source=(\"$(basename "$DEB")\")|" package/arch/PKGBUILD
+fi
+
+DIRT="$(git status --porcelain)"
+if [ -n "$DIRT" ]; then
+    # Only the pkgver bump is an acceptable pre-existing change; anything else is the user's.
+    if [ "$(printf '%s\n' "$DIRT" | grep -cv 'package/arch/PKGBUILD')" -ne 0 ]; then
+        printf '%s\n' "$DIRT"
+        die "working tree has changes other than the pkgver bump - commit or stash first"
+    fi
+    log "Committing the pkgver bump"
+    git add package/arch/PKGBUILD
+    git commit -q -m "Set pkgver to $VERSION
+
+Tracks upstream VMS release ${VERSION%.*} build ${VERSION##*.}
+(nx_open tag vms/${VERSION%.*}/release_${VERSION##*.}_all)."
+    git push origin HEAD
+fi
 
 log "Building the pacman package"
 ./package/arch/make-arch-package.sh "$DEB"
@@ -88,5 +112,8 @@ fi
 
 log "Done"
 note "tag     : $TAG"
-note "package : $PKG"
-note "tarball : $TARBALL"
+note "package : $PKG ($(du -h "$PKG" | cut -f1))"
+note "tarball : $TARBALL ($(du -h "$TARBALL" | cut -f1))"
+echo
+note "Both are release ASSETS, which allow up to 2 GB each. The 100 MB limit applies only to"
+note "files committed into the repository - which is why these are gitignored, not committed." 

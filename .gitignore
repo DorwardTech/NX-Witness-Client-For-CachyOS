@@ -1,6 +1,20 @@
-# Build outputs and extracted packages - these are hundreds of MB.
+# Build outputs and extracted packages - hundreds of MB each.
+#
+# Release ARTIFACTS never belong in git: GitHub hard-blocks files over 100 MB, and these are
+# ~300 MB. They are published as release assets instead, which are a separate store with a
+# 2 GB per-file limit. See release.sh.
 nx-client-cachyos/
 *.tar.zst
 *.tar.zst.sha256
+*.tar.gz
 *.deb
-package/nx-diagnose.txt
+
+# makepkg working directories and output. pkg/ holds the entire unpacked client tree (~875 MB),
+# so leaving it untracked-but-not-ignored is how an accidental `git add -A` blows the limit.
+package/arch/pkg/
+package/arch/src/
+package/arch/*.pkg.tar.*
+package/arch/*.sig
+
+# diagnose.sh output.
+nx-diagnose.txt
