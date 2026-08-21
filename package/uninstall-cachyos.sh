@@ -29,10 +29,13 @@ die()  { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 # guessing at a path.
 TARGET=""
 if [ -f /usr/local/bin/nxwitness-client ]; then
-    TARGET="$(grep -o '/opt/[^"]*/client/[^"]*' /usr/local/bin/nxwitness-client | head -1)"
+    # Stop at the version component: the launcher also mentions .../bin/client, and matching
+    # that far would yield a file rather than the module directory we need to remove.
+    TARGET="$(grep -o '/opt/[^"]*/client/[^"/]*' /usr/local/bin/nxwitness-client | head -1)"
 fi
-if [ -z "$TARGET" ]; then
-    TARGET="$(find /opt -maxdepth 3 -type d -path '*/client/*' -name '6.*' 2>/dev/null | head -1)"
+# Fall back whenever the launcher gave us nothing usable - not only when it gave us nothing.
+if [ -z "$TARGET" ] || [ ! -d "$TARGET" ]; then
+    TARGET="$(find /opt -maxdepth 3 -type d -path '*/client/*' -name '[0-9]*.[0-9]*' 2>/dev/null | head -1)"
 fi
 
 if [ -n "$TARGET" ] && [ -d "$TARGET" ]; then
