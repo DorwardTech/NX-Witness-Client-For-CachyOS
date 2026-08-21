@@ -170,12 +170,46 @@ titles, the logo and the About box read "Nx Meta" rather than "Nx Witness".
 This is cosmetic: it is the same client talking to the same server.
 
 
-AUTOMATIC UPDATES ARE DISABLED - DECLINE UPDATE PROMPTS
--------------------------------------------------------
-Open-source builds do not auto-update, by design: an official update package
-would overwrite this build with a stock Nx build that does not run on Arch.
-If the server ever offers to update the client, decline it. To move to a
-different VMS version, rebuild from the matching release tag instead.
+TWO HARMLESS PROMPTS YOU WILL SEE, AND WHY
+------------------------------------------
+1. A "Beta version" dialog on every launch.
+   This build's publication type is "local", which is not in the set
+   {patch, release} that suppresses the dialog. Just dismiss it.
+
+2. A "<version> is available" update notification.
+   The client polls for releases on a 60-minute timer. Ignore it.
+
+Automatic updates CANNOT replace this build, for two independent reasons: the
+"local" publication type is rejected outright when selecting a client release,
+and this build identifies as the "open-source" custom-client variant, which
+Nx's public release packages do not carry. So the notification is cosmetic -
+but decline any update anyway, since a stock Nx build would not run on Arch.
+To move to a different VMS version, rebuild from the matching release tag.
+
+
+IF THE SERVER STILL REFUSES THE CONNECTION
+------------------------------------------
+demoMode=1 suppresses the client-side customization check, which is the check
+that actually rejects an Nx Witness server in practice. It does not, however,
+blank the branding the client ADVERTISES to the server - only developerMode
+does that. Whether a server independently rejects a differently branded peer
+could not be verified, because the Nx mediaserver is not open-source.
+
+If, and only if, the connection is still refused with demoMode=1 in place, add
+a second line to ~/.config/nx_ini/desktop_client.ini:
+
+    demoMode=1
+    developerMode=1
+
+developerMode blanks the advertised brand and customization, and additionally
+relaxes the protocol-version check. The cost is that developer UI affordances
+become visible in the client. Try demoMode alone first.
+
+As a last resort for a protocol-version mismatch specifically (it should not
+occur against any 6.1.x server - they all report protocol 6113), the client
+also accepts:
+
+    nxwitness-client --override-protocol-version <N>
 
 
 UNINSTALL
@@ -208,6 +242,11 @@ Server is actually 6.0.x, not 6.1.x
     Protocol versions differ across minor releases. Rebuild from the matching
     tag - list them with:
         git ls-remote --tags https://github.com/networkoptix/nx_open | grep 'vms/6\.'
+
+Still refused after all of the above
+    Run the client from a terminal and read the log it prints; the compatibility
+    error names which of the four checks failed (customization, cloud host,
+    protocol version, or version too low).
 README
 
 # ------------------------------------------------------------------------------------------------

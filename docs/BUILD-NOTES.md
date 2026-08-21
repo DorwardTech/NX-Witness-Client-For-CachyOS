@@ -292,6 +292,18 @@ bundled inside `lib/` with RPATHs already set, so the system list is short. Debi
 | `libxtst6` | `libxtst` |
 | `debconf` | n/a — Debian packaging only |
 
+Several of these are *also* bundled. The Conan package
+`os_deps_for_desktop_linux/ubuntu_focal` contributes `libXss.so.1`, `libxcb-cursor.so.0`,
+`libxcb-xinerama.so.0`, `libxcb-shape.so.0`, `libxkbcommon.so.0`, `libxkbcommon-x11.so.0` and
+`libOpenGL.so.0`, pulled in through `-L` flags that package injects into
+`CMAKE_EXE_LINKER_FLAGS` (`os_deps.cmake:26-35`), carried via `build_distribution.conf.in`, and
+copied into the bundle by `copy_system_library.py`. `cmake/dependencies.cmake:11` even sets
+`CMAKE_FIND_USE_CMAKE_SYSTEM_PATH OFF`. Installing the pacman equivalents anyway is harmless and
+guards against a bundled copy being unusable, which is why they stay on the list.
+
+The same mechanism is why **`gstreamer`, `gst-plugins-base-libs` and `libpng` must NOT be added**
+to the pacman list — they come from Conan and are bundled, not taken from the distro.
+
 Two additions that are not in the yaml but matter in practice:
 
 - **`libxkbcommon-x11`** — Qt's `xcb` platform plugin needs `libxkbcommon-x11.so.0`. On Ubuntu it
@@ -303,11 +315,87 @@ The yaml also *recommends* `binutils`; it is not required to run the client.
 
 ---
 
-## Automatic updates
+## Automatic updates, and the prompts that still appear
 
-Open-source builds are not updated in place — an official update package would replace this
-build with a stock Nx build that does not run on Arch. Decline any client update the server
-offers, and move VMS versions by rebuilding from the matching release tag instead.
+The client **cannot** resolve an update package in this build, for two independent reasons:
+
+- `publicationType` is `local`, which falls through to `default: return false` in
+  `publicationTypeAllowed()` (`releases_info.cpp:26-27`), gating `selectDesktopClientRelease`.
+- `branding::customClientVariant()` is `open-source`, so `findPackage` demands a package carrying
+  `Component::customClient` with a matching `open-source` variant
+  (`update_verification.cpp:258-259` → `publication_info.cpp:47-59`). Nx's public release packages
+  do not carry it.
+
+So an update cannot silently replace this build. Two prompts do still appear, and both are
+expected and harmless:
+
+- **"Beta version" dialog on every launch.** `publicationType=local` is not in `{patch, release}`,
+  so `startup_actions_handler.cpp:398-408` shows it each time. Dismiss it.
+- **"<version> is available" notification.** `selectVmsRelease` has no publicationType filter and
+  polls `https://updates.vmsproxy.com/metavms/releases.json` on a 60-minute timer
+  (`workbench_update_watcher.cpp:49`). Ignore it — the download cannot succeed anyway.
+
+The "Client auto-updates" feature informer will *not* fire: `ClientUpdateSettings::enabled` is
+computed in a constructor (`client_update_settings.cpp:10-14`), not from the header initialiser,
+and with `customClient=true` for the metavms customization the compiled default is `false`.
+
+Move VMS versions by rebuilding from the matching release tag, not by accepting an update.
+
+---
+
+## Residual risk: what could not be verified from this repository
+
+Everything above is checked against source. Two things honestly cannot be:
+
+**1. Server-side acceptance of a `metavms` peer.** `demoMode=1` provably suppresses the
+*client-side* customization check. Whether the server also rejects a differently branded peer is
+not knowable here — `vms/server/` in this repository contains only `api`, `nx_server_plugin_sdk`,
+`plugins` and `stub_analytics_api_integration`; the mediaserver core is not open-sourced.
+
+Relevant detail: `demoMode` does **not** blank the client's advertised identity. Only
+`developerMode` does — `vms/client/nx_vms_client_desktop/src/nx/vms/client/desktop/system_context.cpp:76-77`:
+
+```cpp
+runtimeData.brand = ini().developerMode ? QString() : nx::branding::brand();
+runtimeData.customization = ini().developerMode ? QString() : nx::branding::customization();
+```
+
+So with `demoMode=1` alone the client still reports `brand=metavms`, `customization=metavms` in its
+`RuntimeData`. Two things suggest that is fine: `RuntimeData::operator==` is hand-written
+specifically to skip brand and customization (`runtime_data.h:69-73`), and `RuntimeData_Fields`
+omits `customization` from serialisation. But it is inference, not proof.
+
+**If the server rejects the connection despite `demoMode=1`,** add `developerMode=1` to the same
+ini file. It blanks the advertised brand and customization, and additionally sets
+`ignoreProtocolVersion`. The cost is that developer UI affordances become visible.
+
+**2. Arch package names.** The Debian → Arch mapping was produced on a Debian container with no
+`pacman` available to check it against. The `.so`-level analysis is verified; the Arch package
+names on the right-hand side are asserted from knowledge. `verify-package.sh` re-derives the real
+requirement empirically with `ldd` against the built tree, which is the check that actually
+matters.
+
+---
+
+## Escaping a protocol-version mismatch
+
+Not needed for a 6.1.x server (all report `6113`), but if a future pairing ever mismatches there
+are three ways past `binaryProtocolVersionDiffers`, in increasing order of bluntness:
+
+1. `developerMode=1` in `desktop_client.ini` → sets `ignoreProtocolVersion`
+   (`application_context.cpp:542-543`).
+2. Connecting via `Purpose::connectInCompatibilityMode` / `connectInCrossSystemMode`, which skip
+   the check (`server_compatibility_validator.cpp:90,93`).
+3. Launching with `--override-protocol-version <N>` (`client_startup_parameters.cpp:98` →
+   `application_context.cpp:196-197`). This is ungated in release builds and rewrites the number
+   the client reports. Blunt, but it exists.
+
+Confirmed for this build from the generated source,
+`nx_open-build/vms/libs/nx_vms_api/protocol_version.cpp:16`:
+
+```cpp
+return protocolVersionOverride > 0 ? protocolVersionOverride : 6113;
+```
 
 ---
 
