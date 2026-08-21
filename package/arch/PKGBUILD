@@ -56,7 +56,7 @@ optdepends=(
     'ttf-dejavu: fonts, if no font packages are installed'
 )
 
-source=("metavms-client-open-source-${pkgver}-linux_x64-local.deb")
+source=("metavms-client-open-source-6.1.3.43301-linux_x64-local.deb")
 sha256sums=('SKIP')
 
 _company=networkoptix-metavms
