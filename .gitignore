@@ -3,3 +3,4 @@ nx-client-cachyos/
 *.tar.zst
 *.tar.zst.sha256
 *.deb
+package/nx-diagnose.txt
