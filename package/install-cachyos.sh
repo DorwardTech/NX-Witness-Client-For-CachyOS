@@ -86,6 +86,12 @@ RUNTIME_DEPS=(
     zlib glib2 dbus expat libxml2 libxslt
     # Qt WebEngine extras
     nspr nss
+    # Required by the BUNDLED libgstgl-1.0.so.0 (gstreamer GL is shipped inside lib/,
+    # but it links against the system libgudev).
+    libgudev
+    # Required by the BUNDLED Intel VA-API driver lib/libva-drivers/iHD_drv_video.so.
+    # Only used for hardware video decoding on Intel GPUs; harmless elsewhere.
+    intel-gmmlib
 )
 
 if [ "$SKIP_DEPS" -eq 0 ]; then
@@ -139,6 +145,16 @@ cat > /usr/local/bin/nxwitness-client <<WRAPPER
 #
 # Without demoMode=1 the client rejects an Nx Witness server with a customization mismatch:
 # this build is branded "$CUSTOMIZATION" while an Nx Witness server reports "default".
+# Force the xcb (X11) platform plugin.
+#
+# The package bundles Qt's wayland platform plugins (plugins/platforms/libqwayland-*.so) but
+# NOT the Qt Wayland libraries they link against (libQt6WaylandClient.so.6 and friends are
+# absent from lib/). On a Wayland session Qt would select "wayland", fail to load the plugin,
+# and abort instead of falling back. xcb runs fine under XWayland.
+# Override by exporting QT_QPA_PLATFORM yourself if you know better.
+: "\${QT_QPA_PLATFORM:=xcb}"
+export QT_QPA_PLATFORM
+
 INI_DIR="\${NX_INI_DIR:-\$HOME/.config/nx_ini}"
 INI="\$INI_DIR/desktop_client.ini"
 if [ -n "\$INI_DIR" ]; then

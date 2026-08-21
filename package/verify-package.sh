@@ -61,8 +61,24 @@ soname_to_arch() {
         libxslt.so*)            echo libxslt ;;
         libnspr4.so*|libplc4.so*|libplds4.so*) echo nspr ;;
         libnss3.so*|libnssutil3.so*|libsmime3.so*|libssl3.so*) echo nss ;;
+        libgudev-1.0.so*)       echo libgudev ;;
+        libigdgmm.so*)          echo intel-gmmlib ;;
         libc.so*|libm.so*|libdl.so*|libpthread.so*|librt.so*|libresolv.so*|ld-linux*) echo glibc ;;
         libstdc++.so*|libgcc_s.so*) echo "gcc-libs (or the bundled lib/stdcpp)" ;;
+        *) echo "" ;;
+    esac
+}
+
+# Sonames that are legitimately unresolved: they belong to bundled Qt platform plugins the
+# client does not use. Nx ships plugins/platforms/libqwayland-*.so and libqeglfs.so but not the
+# Qt Wayland / EGLFS libraries they link against. This is why install-cachyos.sh pins
+# QT_QPA_PLATFORM=xcb - on a Wayland session Qt would otherwise pick a plugin it cannot load.
+benign_unresolved() {
+    case "$1" in
+        libQt6WaylandClient.so*|libQt6WaylandEglClientHwIntegration.so*)
+            echo "Qt Wayland plugin dep; unused - launcher pins QT_QPA_PLATFORM=xcb" ;;
+        libQt6EglFSDeviceIntegration.so*)
+            echo "Qt EGLFS (embedded) plugin dep; unused on a desktop" ;;
         *) echo "" ;;
     esac
 }
@@ -165,9 +181,12 @@ else
         while read -r so; do
             [ -n "$so" ] || continue
             pkg="$(soname_to_arch "$so")"
+            benign="$(benign_unresolved "$so")"
             if [ -n "$pkg" ]; then
-                printf '  %-34s -> %s\n' "$so" "$pkg"
+                printf '  %-40s -> %s\n' "$so" "$pkg"
                 echo "$pkg" >> "$NEEDED_PKGS"
+            elif [ -n "$benign" ]; then
+                warn "$so -> $benign"
             else
                 bad "$so -> UNEXPLAINED: not bundled and not on the runtime dependency list"
             fi

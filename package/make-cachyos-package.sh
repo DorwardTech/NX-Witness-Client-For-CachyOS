@@ -253,9 +253,21 @@ README
 # Tarball
 # ------------------------------------------------------------------------------------------------
 log "Creating tarball"
-TARBALL="$OUTDIR/nx-witness-client-$VERSION-cachyos-x86_64.tar.zst"
+# zstd is the default (CachyOS has it - pacman itself uses it), but fall back rather than
+# emit a truncated archive on a host without it.
+if command -v zstd >/dev/null 2>&1; then
+    TARBALL="$OUTDIR/nx-witness-client-$VERSION-cachyos-x86_64.tar.zst"
+    COMPRESS=(--zstd)
+else
+    note "zstd not found - falling back to gzip"
+    TARBALL="$OUTDIR/nx-witness-client-$VERSION-cachyos-x86_64.tar.gz"
+    COMPRESS=(-z)
+fi
 rm -f "$TARBALL"
-tar --zstd -cf "$TARBALL" -C "$OUTDIR" nx-client-cachyos
+if ! tar "${COMPRESS[@]}" -cf "$TARBALL" -C "$OUTDIR" nx-client-cachyos; then
+    rm -f "$TARBALL"
+    die "tar failed; no archive written"
+fi
 rm -rf "$PKGROOT"
 
 SHA="$(sha256sum "$TARBALL" | awk '{print $1}')"
